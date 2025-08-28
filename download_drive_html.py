@@ -144,7 +144,17 @@ def download_txt_file(file_id, file_name, original_name):
     while not done:
         _, done = downloader.next_chunk()
     text_content = fh.getvalue().decode('utf-8')
-    html_content = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{original_name}</title></head><body><pre>{text_content}</pre></body></html>"
+    
+    # 检查内容是否已经是HTML格式
+    is_html = text_content.strip().lower().startswith('<!doctype html') or text_content.strip().lower().startswith('<html')
+    
+    if is_html:
+        # 如果已经是HTML格式，直接保存
+        html_content = text_content
+    else:
+        # 如果不是HTML格式，则包装成HTML
+        html_content = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{original_name}</title></head><body><pre>{text_content}</pre></body></html>"
+    
     with open(file_name, 'w', encoding='utf-8') as f:
         f.write(html_content)
     print(f"✅ TXT 已转换为 HTML: {file_name}")
@@ -251,6 +261,9 @@ for fname in all_html_files:
         # 正则表达式匹配从 <footer> 到 </footer> 之间的所有内容（非贪婪匹配）
         content = re.sub(r"<footer>.*?</footer>", "", content, flags=re.DOTALL | re.IGNORECASE)
         
+        # 清理可能存在的多余的HTML结构（处理嵌套的HTML问题）
+        content = re.sub(r"</body>\s*</html>\s*(?=<footer>|</body>)", "", content, flags=re.IGNORECASE)
+        
         # 从潜在链接列表中排除当前文件
         other_files = [x for x in all_html_files if x != fname]
         # 确定要添加的随机链接数量（4 到 6 个之间）
@@ -260,12 +273,9 @@ for fname in all_html_files:
             random_links = random.sample(other_files, num_links)
             links_html = "<footer><ul>\n" + "\n".join([f'<li><a href="{x}">{x}</a></li>' for x in random_links]) + "\n</ul></footer>"
             
-            # 找到 </body> 标签之前的位置来插入新的链接
-            if "</body>" in content:
-                content = content.replace("</body>", links_html + "</body>")
-            else:
-                # 如果没有 </body> 标签，就直接附加到文件末尾
-                content += links_html
+            # 确保只保留最后一个</body></html>标签
+            content = re.sub(r"</body>\s*</html>.*$", "", content, flags=re.IGNORECASE)
+            content = content.strip() + "\n" + links_html + "</body></html>"
 
         with open(fname, "w", encoding="utf-8") as f:
             f.write(content)
